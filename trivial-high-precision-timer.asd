@@ -6,6 +6,6 @@
   :license  "GPLv3"
   :version "0.0.1"
   :serial t
-  :depends-on (:cffi)
+  :depends-on (#-(or ecl jscl abcl) :cffi)
   :components ((:file "package")
                (:file "timer")))

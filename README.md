@@ -2,12 +2,6 @@
 
 A cross-platform high-precision monotonic timer for Common Lisp, ported from [sokol_time.h](https://github.com/floooh/sokol).
 
-Uses the best available OS timer on each platform:
-
-- **macOS** — `mach_absolute_time`
-- **Linux** — `clock_gettime(CLOCK_MONOTONIC)`
-- **Windows** — `QueryPerformanceCounter`
-
 ## Quick Start
 
 ```lisp

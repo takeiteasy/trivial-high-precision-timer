@@ -2,7 +2,8 @@
 
 (defpackage #:trivial-high-precision-timer
   (:use #:cl)
-  (:export #:setup
+  (:export #:*timer-resolution*
+           #:setup
            #:now
            #:diff
            #:since
