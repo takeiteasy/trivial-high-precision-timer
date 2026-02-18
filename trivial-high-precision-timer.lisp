@@ -1,5 +1,4 @@
-;;;; timer.lisp — High-precision timer for Common Lisp
-;;;; Based on sokol_time.h by Andre Weissflog (https://github.com/floooh/sokol)
+;;;; trivial-high-precision-timer.lisp — High-precision timer for Common Lisp
 ;;;;
 ;;;; Backends (in priority order):
 ;;;;   1. CFFI — macOS (mach_absolute_time), Linux/BSD (clock_gettime), Windows (QPC)
@@ -8,24 +7,29 @@
 ;;;;   4. ABCL — Java System.nanoTime() for JVM
 ;;;;   5. Pure CL — get-internal-real-time fallback for any conforming implementation
 
+(defpackage #:trivial-high-precision-timer
+  (:use #:cl)
+  (:export #:precision-timer
+           #:make-precision-timer
+           #:precision-timer-resolution
+           #:precision-timer-start
+           #:now
+           #:diff
+           #:since
+           #:laptime
+           #:round-to-common-refresh-rate
+           #:sec
+           #:ms
+           #:us
+           #:ns))
+           
 (in-package #:trivial-high-precision-timer)
-
-;;; ————————————————————————————————————————————————
-;;; Timer resolution
-;;; ————————————————————————————————————————————————
-
-(defvar *timer-resolution* :ns
-  "Output resolution for timer values returned by NOW, DIFF, SINCE, and LAPTIME.
-One of :NS (nanoseconds), :US (microseconds), :MS (milliseconds), or :S (seconds).
-When :S, values are returned as DOUBLE-FLOAT; otherwise as integers.
-Must be set before calling SETUP, or call SETUP again after changing.")
 
 ;;; ————————————————————————————————————————————————
 ;;; Internal state
 ;;; ————————————————————————————————————————————————
 
-(defvar *initialized* nil)
-(defvar *start* 0)
+(defvar %platform-initialized% nil)
 
 #+darwin
 (progn
@@ -46,9 +50,9 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
   (multiple-value-bind (q r) (floor value denom)
     (+ (* q numer) (floor (* r numer) denom))))
 
-(defun %normalize-ns (nanoseconds)
-  "Convert raw nanoseconds to the current *timer-resolution*."
-  (ecase *timer-resolution*
+(defun %normalize-ns (nanoseconds resolution)
+  "Convert raw nanoseconds to the given resolution keyword."
+  (ecase resolution
     (:ns nanoseconds)
     (:us (floor nanoseconds 1000))
     (:ms (floor nanoseconds 1000000))
@@ -140,95 +144,98 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
         :one-liner nil))))
 
 ;;; ————————————————————————————————————————————————
-;;; Backend dispatch: %backend-setup and %now-ns
+;;; Backend dispatch: %ensure-platform-initialized,
+;;; %raw-ticks, %ticks-to-ns
 ;;; Exactly one definition of each is compiled per build.
 ;;; ————————————————————————————————————————————————
-
-(declaim (inline %now-ns))
 
 ;;; --- ECL Darwin (macOS / iOS) ---
 
 #+(and ecl darwin)
 (progn
-  (defun %backend-setup ()
-    (setf *timebase-numer* (%ecl-mach-timebase-numer))
-    (setf *timebase-denom* (%ecl-mach-timebase-denom))
-    (setf *start* (%ecl-mach-absolute-time)))
-  (defun %now-ns ()
-    (%int64-muldiv (- (%ecl-mach-absolute-time) *start*)
-                   *timebase-numer* *timebase-denom*)))
+  (defun %ensure-platform-initialized ()
+    (unless %platform-initialized%
+      (setf *timebase-numer* (%ecl-mach-timebase-numer))
+      (setf *timebase-denom* (%ecl-mach-timebase-denom))
+      (setf %platform-initialized% t)))
+  (defun %raw-ticks ()
+    (%ecl-mach-absolute-time))
+  (defun %ticks-to-ns (delta)
+    (%int64-muldiv delta *timebase-numer* *timebase-denom*)))
 
 ;;; --- ECL Unix (Linux / Android / BSD) ---
 
 #+(and ecl unix (not darwin))
 (progn
-  (defun %backend-setup ()
-    (setf *start* (%ecl-clock-gettime-ns)))
-  (defun %now-ns ()
-    (- (%ecl-clock-gettime-ns) *start*)))
+  (defun %ensure-platform-initialized ()
+    (setf %platform-initialized% t))
+  (defun %raw-ticks ()
+    (%ecl-clock-gettime-ns))
+  (defun %ticks-to-ns (delta)
+    delta))
 
 ;;; --- ECL Windows ---
 
 #+(and ecl windows)
 (progn
-  (defun %backend-setup ()
-    (setf *freq* (%ecl-qpf))
-    (setf *start* (%ecl-qpc)))
-  (defun %now-ns ()
-    (%int64-muldiv (- (%ecl-qpc) *start*) 1000000000 *freq*)))
+  (defun %ensure-platform-initialized ()
+    (unless %platform-initialized%
+      (setf *freq* (%ecl-qpf))
+      (setf %platform-initialized% t)))
+  (defun %raw-ticks ()
+    (%ecl-qpc))
+  (defun %ticks-to-ns (delta)
+    (%int64-muldiv delta 1000000000 *freq*)))
 
 ;;; --- CFFI Darwin (macOS) ---
 
 #+(and (not ecl) (not jscl) (not abcl) darwin)
 (progn
-  (defun %backend-setup ()
-    (cffi:with-foreign-object (info '(:struct mach-timebase-info-data))
-      (%mach-timebase-info info)
-      (setf *timebase-numer*
-            (cffi:foreign-slot-value info '(:struct mach-timebase-info-data) 'numer))
-      (setf *timebase-denom*
-            (cffi:foreign-slot-value info '(:struct mach-timebase-info-data) 'denom))
-      (setf *start* (%mach-absolute-time))))
-  (defun %now-ns ()
-    (%int64-muldiv (- (%mach-absolute-time) *start*)
-                   *timebase-numer* *timebase-denom*)))
+  (defun %ensure-platform-initialized ()
+    (unless %platform-initialized%
+      (cffi:with-foreign-object (info '(:struct mach-timebase-info-data))
+        (%mach-timebase-info info)
+        (setf *timebase-numer*
+              (cffi:foreign-slot-value info '(:struct mach-timebase-info-data) 'numer))
+        (setf *timebase-denom*
+              (cffi:foreign-slot-value info '(:struct mach-timebase-info-data) 'denom)))
+      (setf %platform-initialized% t)))
+  (defun %raw-ticks ()
+    (%mach-absolute-time))
+  (defun %ticks-to-ns (delta)
+    (%int64-muldiv delta *timebase-numer* *timebase-denom*)))
 
 ;;; --- CFFI Unix (Linux / FreeBSD / OpenBSD / NetBSD) ---
 
 #+(and (not ecl) (not jscl) (not abcl) unix (not darwin))
 (progn
-  (defun %backend-setup ()
+  (defun %ensure-platform-initialized ()
+    (setf %platform-initialized% t))
+  (defun %raw-ticks ()
     (cffi:with-foreign-object (ts '(:struct timespec))
       (%clock-gettime +clock-monotonic+ ts)
-      (setf *start*
-            (+ (* (cffi:foreign-slot-value ts '(:struct timespec) 'tv-sec)
-                  1000000000)
-               (cffi:foreign-slot-value ts '(:struct timespec) 'tv-nsec)))))
-  (defun %now-ns ()
-    (cffi:with-foreign-object (ts '(:struct timespec))
-      (%clock-gettime +clock-monotonic+ ts)
-      (- (+ (* (cffi:foreign-slot-value ts '(:struct timespec) 'tv-sec)
-                1000000000)
-            (cffi:foreign-slot-value ts '(:struct timespec) 'tv-nsec))
-         *start*))))
+      (+ (* (cffi:foreign-slot-value ts '(:struct timespec) 'tv-sec)
+            1000000000)
+         (cffi:foreign-slot-value ts '(:struct timespec) 'tv-nsec))))
+  (defun %ticks-to-ns (delta)
+    delta))
 
 ;;; --- CFFI Windows ---
 
 #+(and (not ecl) (not jscl) (not abcl) windows)
 (progn
-  (defun %backend-setup ()
-    (cffi:with-foreign-object (freq :int64)
-      (%query-performance-frequency freq)
-      (setf *freq* (cffi:mem-ref freq :int64)))
+  (defun %ensure-platform-initialized ()
+    (unless %platform-initialized%
+      (cffi:with-foreign-object (freq :int64)
+        (%query-performance-frequency freq)
+        (setf *freq* (cffi:mem-ref freq :int64)))
+      (setf %platform-initialized% t)))
+  (defun %raw-ticks ()
     (cffi:with-foreign-object (count :int64)
       (%query-performance-counter count)
-      (setf *start* (cffi:mem-ref count :int64))))
-  (defun %now-ns ()
-    (cffi:with-foreign-object (count :int64)
-      (%query-performance-counter count)
-      (%int64-muldiv (- (cffi:mem-ref count :int64) *start*)
-                     1000000000
-                     *freq*))))
+      (cffi:mem-ref count :int64)))
+  (defun %ticks-to-ns (delta)
+    (%int64-muldiv delta 1000000000 *freq*)))
 
 ;;; --- JSCL (WebAssembly / browser) ---
 ;;; Uses performance.now() which returns milliseconds as a float.
@@ -238,22 +245,24 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 
 #+jscl
 (progn
-  (defun %jscl-now-ns ()
+  (defun %ensure-platform-initialized ()
+    (setf %platform-initialized% t))
+  (defun %raw-ticks ()
     (round (* (#j:performance:now) 1000000)))
-  (defun %backend-setup ()
-    (setf *start* (%jscl-now-ns)))
-  (defun %now-ns ()
-    (- (%jscl-now-ns) *start*)))
+  (defun %ticks-to-ns (delta)
+    delta))
 
 ;;; --- ABCL (JVM) ---
 ;;; Uses System.nanoTime() — monotonic, nanosecond precision.
 
 #+abcl
 (progn
-  (defun %backend-setup ()
-    (setf *start* (java:jstatic "nanoTime" "java.lang.System")))
-  (defun %now-ns ()
-    (- (java:jstatic "nanoTime" "java.lang.System") *start*)))
+  (defun %ensure-platform-initialized ()
+    (setf %platform-initialized% t))
+  (defun %raw-ticks ()
+    (java:jstatic "nanoTime" "java.lang.System"))
+  (defun %ticks-to-ns (delta)
+    delta))
 
 ;;; --- Pure CL fallback ---
 ;;; Uses get-internal-real-time. Resolution varies by implementation:
@@ -266,10 +275,12 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
     (%int64-muldiv (get-internal-real-time)
                    1000000000
                    internal-time-units-per-second))
-  (defun %backend-setup ()
-    (setf *start* (%cl-time-ns)))
-  (defun %now-ns ()
-    (- (%cl-time-ns) *start*)))
+  (defun %ensure-platform-initialized ()
+    (setf %platform-initialized% t))
+  (defun %raw-ticks ()
+    (%cl-time-ns))
+  (defun %ticks-to-ns (delta)
+    delta))
 
 ;;; ————————————————————————————————————————————————
 ;;; Refresh rate table (for round-to-common-refresh-rate)
@@ -288,107 +299,137 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
     ( 4166667 . 1000000))) ; 240 Hz
 
 ;;; ————————————————————————————————————————————————
+;;; precision-timer CLOS class
+;;; ————————————————————————————————————————————————
+
+(defclass precision-timer ()
+  ((start
+    :reader precision-timer-start
+    :documentation "Raw platform tick captured at timer creation. Not in resolution units.")
+   (resolution
+    :initarg :resolution
+    :reader precision-timer-resolution
+    :initform :ns
+    :documentation "Output resolution: :NS (default), :US, :MS, or :S."))
+  (:documentation "A high-precision monotonic timer. Create with MAKE-PRECISION-TIMER."))
+
+(defmethod initialize-instance :after ((timer precision-timer) &key)
+  (%ensure-platform-initialized)
+  (setf (slot-value timer 'start) (%raw-ticks)))
+
+(defun make-precision-timer (&key (resolution :ns))
+  "Create a new high-precision timer. RESOLUTION is :NS (default), :US, :MS, or :S.
+The start time is captured at the moment of this call."
+  (check-type resolution (member :ns :us :ms :s))
+  (make-instance 'precision-timer :resolution resolution))
+
+;;; ————————————————————————————————————————————————
 ;;; Public API
 ;;; ————————————————————————————————————————————————
 
-(defun setup ()
-  "Initialize the timer. Must be called once before any other timer functions.
-Respects the current value of *timer-resolution*."
-  (%backend-setup)
-  (setf *initialized* t)
-  (values))
-
-(defun now ()
-  "Get current time since SETUP in the resolution specified by *timer-resolution*.
+(defgeneric now (timer)
+  (:documentation "Get elapsed time since the timer was created, in the timer's resolution.
 The value has no relation to wall-clock time and is only useful
-for computing time differences."
-  (assert *initialized* ()
-          "Timer not initialized. Call (trivial-high-precision-timer:setup) first.")
-  (%normalize-ns (%now-ns)))
+for computing time differences."))
 
-(declaim (inline diff))
-(defun diff (new-ticks old-ticks)
-  "Compute the time difference between NEW-TICKS and OLD-TICKS.
-Result is in the current *timer-resolution*. Always returns a positive,
-non-zero value (returns 1 tick minimum to prevent division by zero)."
+(defmethod now ((timer precision-timer))
+  (%normalize-ns (%ticks-to-ns (- (%raw-ticks) (precision-timer-start timer)))
+                 (precision-timer-resolution timer)))
+
+(defgeneric diff (timer new-ticks old-ticks)
+  (:documentation "Compute the time difference between NEW-TICKS and OLD-TICKS.
+Result is in the timer's resolution. Always returns a positive,
+non-zero value (returns 1 tick minimum to prevent division by zero)."))
+
+(defmethod diff ((timer precision-timer) new-ticks old-ticks)
   (if (> new-ticks old-ticks)
       (- new-ticks old-ticks)
       1))
 
-(declaim (inline since))
-(defun since (start-ticks)
-  "Return elapsed time since START-TICKS in the current *timer-resolution*.
-Shorthand for (DIFF (NOW) START-TICKS)."
-  (diff (now) start-ticks))
+(defgeneric since (timer start-ticks)
+  (:documentation "Return elapsed time since START-TICKS in the timer's resolution.
+Shorthand for (DIFF timer (NOW timer) START-TICKS)."))
 
-(defun laptime (last-time)
-  "Measure lap/frame time. LAST-TIME is the tick value from the previous call
+(defmethod since ((timer precision-timer) start-ticks)
+  (diff timer (now timer) start-ticks))
+
+(defgeneric laptime (timer last-time)
+  (:documentation "Measure lap/frame time. LAST-TIME is the tick value from the previous call
 \(or 0 on the first call). Returns (VALUES elapsed-ticks current-ticks).
 
 Example:
   (let ((last 0))
-    (multiple-value-bind (dt cur) (laptime last)
+    (multiple-value-bind (dt cur) (laptime timer last)
       (setf last cur)
-      dt))"
-  (let* ((current (now))
-         (dt (if (zerop last-time)
-                 0
-                 (diff current last-time))))
+      dt))"))
+
+(defmethod laptime ((timer precision-timer) last-time)
+  (let* ((current (now timer))
+         (dt (if (zerop last-time) 0 (diff timer current last-time))))
     (values dt current)))
 
-(defun round-to-common-refresh-rate (frame-ticks)
-  "Round a measured frame duration to the nearest common display refresh rate.
+(defgeneric round-to-common-refresh-rate (timer frame-ticks)
+  (:documentation "Round a measured frame duration to the nearest common display refresh rate.
 Returns the input unchanged if no common rate matches.
-Works correctly regardless of *timer-resolution* setting."
-  (let ((frame-ns (ecase *timer-resolution*
-                    (:ns frame-ticks)
-                    (:us (* frame-ticks 1000))
-                    (:ms (* frame-ticks 1000000))
-                    (:s  (round (* frame-ticks 1000000000.0d0))))))
+Works correctly regardless of the timer's resolution setting."))
+
+(defmethod round-to-common-refresh-rate ((timer precision-timer) frame-ticks)
+  (let* ((resolution (precision-timer-resolution timer))
+         (frame-ns (ecase resolution
+                     (:ns frame-ticks)
+                     (:us (* frame-ticks 1000))
+                     (:ms (* frame-ticks 1000000))
+                     (:s  (round (* frame-ticks 1000000000.0d0))))))
     (loop for entry across *refresh-rates*
           for ns  = (car entry)
           for tol = (cdr entry)
           when (< (- ns tol) frame-ns (+ ns tol))
-            do (return (%normalize-ns ns))
+            do (return (%normalize-ns ns resolution))
           finally (return frame-ticks))))
 
 ;;; ————————————————————————————————————————————————
 ;;; Unit conversion (resolution-aware)
 ;;; ————————————————————————————————————————————————
 
-(declaim (inline sec ms us ns))
+(defgeneric sec (timer ticks)
+  (:documentation "Convert ticks (in timer's resolution) to seconds (double-float)."))
 
-(defun sec (ticks)
-  "Convert ticks (in current *timer-resolution*) to seconds (double-float)."
+(defmethod sec ((timer precision-timer) ticks)
   (* (coerce ticks 'double-float)
-     (ecase *timer-resolution*
+     (ecase (precision-timer-resolution timer)
        (:ns 1.0d-9)
        (:us 1.0d-6)
        (:ms 1.0d-3)
        (:s  1.0d0))))
 
-(defun ms (ticks)
-  "Convert ticks (in current *timer-resolution*) to milliseconds (double-float)."
+(defgeneric ms (timer ticks)
+  (:documentation "Convert ticks (in timer's resolution) to milliseconds (double-float)."))
+
+(defmethod ms ((timer precision-timer) ticks)
   (* (coerce ticks 'double-float)
-     (ecase *timer-resolution*
+     (ecase (precision-timer-resolution timer)
        (:ns 1.0d-6)
        (:us 1.0d-3)
        (:ms 1.0d0)
        (:s  1.0d3))))
 
-(defun us (ticks)
-  "Convert ticks (in current *timer-resolution*) to microseconds (double-float)."
+(defgeneric us (timer ticks)
+  (:documentation "Convert ticks (in timer's resolution) to microseconds (double-float)."))
+
+(defmethod us ((timer precision-timer) ticks)
   (* (coerce ticks 'double-float)
-     (ecase *timer-resolution*
+     (ecase (precision-timer-resolution timer)
        (:ns 1.0d-3)
        (:us 1.0d0)
        (:ms 1.0d3)
        (:s  1.0d6))))
 
-(defun ns (ticks)
-  "Convert ticks (in current *timer-resolution*) to nanoseconds (double-float)."
+(defgeneric ns (timer ticks)
+  (:documentation "Convert ticks (in timer's resolution) to nanoseconds (double-float)."))
+
+(defmethod ns ((timer precision-timer) ticks)
   (* (coerce ticks 'double-float)
-     (ecase *timer-resolution*
+     (ecase (precision-timer-resolution timer)
        (:ns 1.0d0)
        (:us 1.0d3)
        (:ms 1.0d6)
