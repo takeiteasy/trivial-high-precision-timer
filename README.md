@@ -77,4 +77,4 @@ ECL uses its own native FFI (`ffi:c-inline`) rather than CFFI because `dlopen` i
 
 ## License
 
-[GPLv3](https://www.gnu.org/licenses/gpl-3.0.html)
+[GPLv3](LICENSE)
