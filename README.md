@@ -44,7 +44,7 @@ A cross-platform high-precision monotonic timer for Common Lisp.
 | `(precision-timer-resolution timer)` | Return the resolution keyword of a timer instance. |
 | `(precision-timer-start timer)` | Return the raw platform tick captured at timer creation. |
 | `(now timer)` | Elapsed time since the timer was created, in the timer's resolution. |
-| `(diff timer new old)` | Difference between two `now` values. Always positive, minimum 1. |
+| `(diff timer new old)` | Difference between two `now` values, never negative. Returns 0 when they are equal or out of order. |
 | `(since timer start)` | Elapsed ticks since `start`. Shorthand for `(diff timer (now timer) start)`. |
 | `(laptime timer last)` | Returns `(values elapsed-ticks current-ticks)`. Pass 0 for the first call. |
 | `(round-to-common-refresh-rate timer ticks)` | Snap a frame duration to the nearest common display refresh rate (60--240 Hz). |
@@ -55,25 +55,32 @@ A cross-platform high-precision monotonic timer for Common Lisp.
 
 ## Backends
 
-The library selects a backend at compile time based on the Lisp implementation and target OS. Backends are tried in the order listed; the first one that applies is used.
+The library picks a backend at compile time from the Lisp implementation and
+target OS — `mach_absolute_time`, `clock_gettime`, `QueryPerformanceCounter`,
+`performance.now()`, `System.nanoTime()`, or a pure-CL fallback.
 
-| Priority | Lisp | OS | API | Typical resolution |
-|---|---|---|---|---|
-| 1 | SBCL, CCL, LispWorks, Clasp, … (via CFFI) | macOS / iOS | `mach_absolute_time` | ~1 ns |
-| 2 | SBCL, CCL, LispWorks, Clasp, … (via CFFI) | Linux, FreeBSD, OpenBSD, NetBSD | `clock_gettime(CLOCK_MONOTONIC)` | ~1 ns |
-| 3 | SBCL, CCL, LispWorks, Clasp, … (via CFFI) | Windows | `QueryPerformanceCounter` | ~100 ns |
-| 4 | ECL | macOS / iOS | `mach_absolute_time` (via `ffi:c-inline`) | ~1 ns |
-| 5 | ECL | Linux, Android, BSD | `clock_gettime(CLOCK_MONOTONIC)` (via `ffi:c-inline`) | ~1 ns |
-| 6 | ECL | Windows | `QueryPerformanceCounter` (via `ffi:c-inline`) | ~100 ns |
-| 7 | JSCL | Browser / Node.js | `performance.now()` | ~5 µs† |
-| 8 | ABCL | JVM (any OS) | `System.nanoTime()` | ~1 µs |
-| 9 | Any | Any | `get-internal-real-time` | varies‡ |
+See [docs/backends.md](docs/backends.md) for the full table, how selection
+works, and how to force the fallback.
 
-† Browsers clamp `performance.now()` resolution to ~1 ms or ~5 µs depending on site isolation settings (Spectre mitigations). Node.js retains nanosecond resolution.
+## Testing
 
-‡ Pure CL fallback resolution depends on the implementation's `internal-time-units-per-second`: SBCL ~1 µs, CCL / ECL ~1 ms, CLISP ~10 ms.
+```sh
+sbcl --script tests/run.lisp
+```
 
-ECL uses its own native FFI (`ffi:c-inline`) rather than CFFI because `dlopen` is restricted on iOS and some embedded targets. All other implementations use CFFI when it is available.
+See [docs/testing.md](docs/testing.md) for the other implementations and the CI
+matrix.
+
+### Not covered by CI
+
+| Platform | Why |
+|---|---|
+| FreeBSD, OpenBSD, NetBSD | No GitHub-hosted runner. Shares the `clock_gettime` path tested on Linux. |
+| CCL, ECL on Windows | Roswell does not support them there. |
+| iOS, Android | No runner. Shares the ECL `ffi:c-inline` paths tested on desktop. |
+| LispWorks, Allegro | Commercial; no CI license. |
+| 32-bit with 64-bit `time_t` | `timespec`'s `tv-sec` is declared `:long`, which is wrong there. |
+| Browser JSCL | Node covers the JSCL backend; browser `performance.now()` clamping is not exercised. |
 
 ## License
 

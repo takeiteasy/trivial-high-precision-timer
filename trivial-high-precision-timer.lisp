@@ -5,7 +5,10 @@
 ;;;;   2. ECL native FFI — same OS APIs, for iOS/Android/embedded where dlopen fails
 ;;;;   3. JSCL — JavaScript performance.now() (jscl-backend.lisp)
 ;;;;   4. ABCL — Java System.nanoTime() for JVM
-;;;;   5. Pure CL — get-internal-real-time fallback for any conforming implementation
+;;;;   5. Pure CL — get-internal-real-time fallback when no native backend applies
+;;;;
+;;;; Push :THPT-FORCE-FALLBACK onto *FEATURES* before loading to select the
+;;;; pure-CL backend on a platform that would otherwise use a native one.
 
 (defpackage #:trivial-high-precision-timer
   (:use #:cl)
@@ -26,17 +29,34 @@
 (in-package #:trivial-high-precision-timer)
 
 ;;; ————————————————————————————————————————————————
+;;; Backend selection
+;;; ————————————————————————————————————————————————
+
+;;; :THPT-NATIVE is present when one of the platform backends applies. Every
+;;; backend block below is gated on it, so an unrecognized OS and a forced
+;;; fallback both land on the pure-CL backend rather than on a half-defined
+;;; native one.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  #-thpt-force-fallback
+  (when (or #+(or jscl abcl) t
+            #+darwin t
+            #+(and unix (not darwin) (or linux freebsd openbsd netbsd)) t
+            #+windows t
+            nil)
+    (pushnew :thpt-native *features*)))
+
+;;; ————————————————————————————————————————————————
 ;;; Internal state
 ;;; ————————————————————————————————————————————————
 
 (defvar %platform-initialized% nil)
 
-#+darwin
+#+(and thpt-native darwin)
 (progn
   (defvar *timebase-numer* 1)
   (defvar *timebase-denom* 1))
 
-#+windows
+#+(and thpt-native windows)
 (defvar *freq* 1)
 
 ;;; ————————————————————————————————————————————————
@@ -50,19 +70,26 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
   (multiple-value-bind (q r) (floor value denom)
     (+ (* q numer) (floor (* r numer) denom))))
 
+(declaim (inline %to-double))
+(defun %to-double (value)
+  "Coerce VALUE to the widest float the implementation has.
+JSCL has no DOUBLE-FLOAT type specifier; its FLOAT is a JS double regardless."
+  #+jscl (coerce value 'float)
+  #-jscl (coerce value 'double-float))
+
 (defun %normalize-ns (nanoseconds resolution)
   "Convert raw nanoseconds to the given resolution keyword."
   (ecase resolution
     (:ns nanoseconds)
     (:us (floor nanoseconds 1000))
     (:ms (floor nanoseconds 1000000))
-    (:s  (/ (coerce nanoseconds 'double-float) 1000000000.0d0))))
+    (:s  (/ (%to-double nanoseconds) 1000000000.0d0))))
 
 ;;; ————————————————————————————————————————————————
-;;; Backend: CFFI (SBCL, CCL, LispWorks, Clasp, etc.)
+;;; Backend: CFFI (SBCL, CCL, CLISP, Clasp, etc.)
 ;;; ————————————————————————————————————————————————
 
-#-(or ecl jscl abcl)
+#+(and thpt-native (not ecl) (not jscl) (not abcl))
 (progn
   #+darwin
   (progn
@@ -75,6 +102,8 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 
   #+(and unix (not darwin))
   (progn
+    ;; TODO: tv-sec is :long, which is wrong on 32-bit platforms with a 64-bit
+    ;; time_t (glibc >= 2.34). Needs a width probe. See ticket #2.
     (cffi:defcstruct timespec
       (tv-sec :long)
       (tv-nsec :long))
@@ -98,7 +127,7 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 ;;; is restricted on iOS and some embedded targets.
 ;;; ————————————————————————————————————————————————
 
-#+ecl
+#+(and thpt-native ecl)
 (progn
   #+darwin
   (progn
@@ -151,7 +180,7 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 
 ;;; --- ECL Darwin (macOS / iOS) ---
 
-#+(and ecl darwin)
+#+(and thpt-native ecl darwin)
 (progn
   (defun %ensure-platform-initialized ()
     (unless %platform-initialized%
@@ -165,7 +194,7 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 
 ;;; --- ECL Unix (Linux / Android / BSD) ---
 
-#+(and ecl unix (not darwin))
+#+(and thpt-native ecl unix (not darwin))
 (progn
   (defun %ensure-platform-initialized ()
     (setf %platform-initialized% t))
@@ -176,7 +205,7 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 
 ;;; --- ECL Windows ---
 
-#+(and ecl windows)
+#+(and thpt-native ecl windows)
 (progn
   (defun %ensure-platform-initialized ()
     (unless %platform-initialized%
@@ -189,7 +218,7 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 
 ;;; --- CFFI Darwin (macOS) ---
 
-#+(and (not ecl) (not jscl) (not abcl) darwin)
+#+(and thpt-native (not ecl) (not jscl) (not abcl) darwin)
 (progn
   (defun %ensure-platform-initialized ()
     (unless %platform-initialized%
@@ -207,7 +236,7 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 
 ;;; --- CFFI Unix (Linux / FreeBSD / OpenBSD / NetBSD) ---
 
-#+(and (not ecl) (not jscl) (not abcl) unix (not darwin))
+#+(and thpt-native (not ecl) (not jscl) (not abcl) unix (not darwin))
 (progn
   (defun %ensure-platform-initialized ()
     (setf %platform-initialized% t))
@@ -222,7 +251,7 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 
 ;;; --- CFFI Windows ---
 
-#+(and (not ecl) (not jscl) (not abcl) windows)
+#+(and thpt-native (not ecl) (not jscl) (not abcl) windows)
 (progn
   (defun %ensure-platform-initialized ()
     (unless %platform-initialized%
@@ -244,7 +273,7 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 ;;; --- ABCL (JVM) ---
 ;;; Uses System.nanoTime() — monotonic, nanosecond precision.
 
-#+abcl
+#+(and thpt-native abcl)
 (progn
   (defun %ensure-platform-initialized ()
     (setf %platform-initialized% t))
@@ -258,7 +287,7 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
 ;;;   SBCL ~1us, CCL ~1ms, ECL ~1ms, CLISP ~10ms.
 ;;; This is the catch-all when no platform-specific backend is available.
 
-#-(or jscl abcl darwin unix windows)
+#-thpt-native
 (progn
   (defun %cl-time-ns ()
     (%int64-muldiv (get-internal-real-time)
@@ -302,9 +331,12 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
     :documentation "Output resolution: :NS (default), :US, :MS, or :S."))
   (:documentation "A high-precision monotonic timer. Create with MAKE-PRECISION-TIMER."))
 
-(defmethod initialize-instance :after ((timer precision-timer) &key)
+(defmethod initialize-instance :after ((timer precision-timer) &rest initargs)
   (%ensure-platform-initialized)
-  (setf (slot-value timer 'start) (%raw-ticks)))
+  (setf (slot-value timer 'start) (%raw-ticks))
+  ;; INITARGS is returned rather than declared ignored: JSCL evaluates
+  ;; declarations in method bodies, and an :AFTER return value is discarded.
+  initargs)
 
 (defun make-precision-timer (&key (resolution :ns))
   "Create a new high-precision timer. RESOLUTION is :NS (default), :US, :MS, or :S.
@@ -327,13 +359,11 @@ for computing time differences."))
 
 (defgeneric diff (timer new-ticks old-ticks)
   (:documentation "Compute the time difference between NEW-TICKS and OLD-TICKS.
-Result is in the timer's resolution. Always returns a positive,
-non-zero value (returns 1 tick minimum to prevent division by zero)."))
+Result is in the timer's resolution, never negative. Returns 0 when the two
+values are equal or out of order, so callers dividing by a delta must guard."))
 
 (defmethod diff ((timer precision-timer) new-ticks old-ticks)
-  (if (> new-ticks old-ticks)
-      (- new-ticks old-ticks)
-      1))
+  (max 0 (- new-ticks old-ticks)))
 
 (defgeneric since (timer start-ticks)
   (:documentation "Return elapsed time since START-TICKS in the timer's resolution.
@@ -384,7 +414,7 @@ Works correctly regardless of the timer's resolution setting."))
   (:documentation "Convert ticks (in timer's resolution) to seconds (double-float)."))
 
 (defmethod sec ((timer precision-timer) ticks)
-  (* (coerce ticks 'double-float)
+  (* (%to-double ticks)
      (ecase (precision-timer-resolution timer)
        (:ns 1.0d-9)
        (:us 1.0d-6)
@@ -395,7 +425,7 @@ Works correctly regardless of the timer's resolution setting."))
   (:documentation "Convert ticks (in timer's resolution) to milliseconds (double-float)."))
 
 (defmethod ms ((timer precision-timer) ticks)
-  (* (coerce ticks 'double-float)
+  (* (%to-double ticks)
      (ecase (precision-timer-resolution timer)
        (:ns 1.0d-6)
        (:us 1.0d-3)
@@ -406,7 +436,7 @@ Works correctly regardless of the timer's resolution setting."))
   (:documentation "Convert ticks (in timer's resolution) to microseconds (double-float)."))
 
 (defmethod us ((timer precision-timer) ticks)
-  (* (coerce ticks 'double-float)
+  (* (%to-double ticks)
      (ecase (precision-timer-resolution timer)
        (:ns 1.0d-3)
        (:us 1.0d0)
@@ -417,7 +447,7 @@ Works correctly regardless of the timer's resolution setting."))
   (:documentation "Convert ticks (in timer's resolution) to nanoseconds (double-float)."))
 
 (defmethod ns ((timer precision-timer) ticks)
-  (* (coerce ticks 'double-float)
+  (* (%to-double ticks)
      (ecase (precision-timer-resolution timer)
        (:ns 1.0d0)
        (:us 1.0d3)

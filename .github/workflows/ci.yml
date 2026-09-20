@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [trunk, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental || false }}
+    env:
+      LISP: ${{ matrix.lisp }}
+      THPT_FORCE_FALLBACK: ${{ matrix.force-fallback }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: SBCL / Linux,     os: ubuntu-latest,   lisp: sbcl-bin }
+          - { name: CCL / Linux,      os: ubuntu-latest,   lisp: ccl-bin }
+          - { name: ECL / Linux,      os: ubuntu-latest,   lisp: ecl }
+          - { name: ABCL / Linux,     os: ubuntu-latest,   lisp: abcl-bin }
+          - { name: SBCL / macOS,     os: macos-latest,    lisp: sbcl-bin }
+          - { name: CCL / macOS,      os: macos-latest,    lisp: ccl-bin }
+          - { name: ECL / macOS,      os: macos-latest,    lisp: ecl }
+          - { name: ABCL / macOS,     os: macos-latest,    lisp: abcl-bin }
+          - { name: SBCL / Windows,   os: windows-latest,  lisp: sbcl-bin }
+          # Roswell supports few implementations on Windows.
+          - { name: ABCL / Windows,   os: windows-latest,  lisp: abcl-bin, experimental: true }
+          # Pure-CL fallback: no CFFI, no platform API. The only coverage this
+          # backend can get, since no runner lacks a native one.
+          - { name: Fallback / Linux,   os: ubuntu-latest,  lisp: sbcl-bin,  force-fallback: '1' }
+          - { name: Fallback / macOS,   os: macos-latest,   lisp: sbcl-bin,  force-fallback: '1' }
+          - { name: Fallback / Windows, os: windows-latest, lisp: sbcl-bin,  force-fallback: '1' }
+          # CLISP runs the fallback: it is the implementation most likely to
+          # lack a working CFFI in the wild.
+          - { name: CLISP / Linux,      os: ubuntu-latest,  lisp: clisp,     force-fallback: '1', experimental: true }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        if: startsWith(matrix.lisp, 'abcl')
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: 40ants/setup-lisp@v4
+        with:
+          asdf-system: trivial-high-precision-timer
+
+      - name: Run test suite
+        shell: lispsh -eo pipefail {0}
+        run: ros -Q run --load tests/run.lisp
+
+  jscl:
+    name: JSCL / node
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: 40ants/setup-lisp@v4
+
+      - name: Build JSCL
+        run: |
+          git clone --depth 1 https://github.com/jscl-project/jscl.git "$RUNNER_TEMP/jscl"
+          cd "$RUNNER_TEMP/jscl"
+          npm install
+          ./make.sh
+
+      - name: Run test suite
+        run: node "$RUNNER_TEMP/jscl/dist/jscl-node.js" tests/run-jscl.lisp
