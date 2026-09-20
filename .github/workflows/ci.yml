@@ -51,6 +51,14 @@ jobs:
         with:
           asdf-system: trivial-high-precision-timer
 
+      # The setup step builds the system without :thpt-force-fallback, so the
+      # fallback cells would otherwise load prebuilt native FASLs: ASDF does
+      # not recompile on a feature change. tests/run.lisp fails the job if the
+      # backend it loaded is not the one asked for.
+      - name: Clear ASDF cache
+        shell: lispsh -eo pipefail {0}
+        run: rm -rf ~/.cache/common-lisp
+
       - name: Run test suite
         shell: lispsh -eo pipefail {0}
         run: ros -Q run --load tests/run.lisp
@@ -65,14 +73,22 @@ jobs:
         with:
           node-version: '22'
 
-      - uses: 40ants/setup-lisp@v4
+      # JSCL's make.sh cross-compiles with a host SBCL it expects on PATH.
+      - name: Install SBCL
+        run: sudo apt-get update && sudo apt-get install -y sbcl
 
       - name: Build JSCL
+        env:
+          # Pinned: JSCL is a moving target and its codegen bugs are this
+          # repo's problem only when we choose to take them. See ticket #4.
+          JSCL_COMMIT: 7981e5a5ba5821d4c1f862eec1cbda9ec3c51e77
         run: |
-          git clone --depth 1 https://github.com/jscl-project/jscl.git "$RUNNER_TEMP/jscl"
+          git clone https://github.com/jscl-project/jscl.git "$RUNNER_TEMP/jscl"
           cd "$RUNNER_TEMP/jscl"
+          git checkout "$JSCL_COMMIT"
           npm install
           ./make.sh
+          test -f dist/jscl-node.js
 
       - name: Run test suite
         run: node "$RUNNER_TEMP/jscl/dist/jscl-node.js" tests/run-jscl.lisp

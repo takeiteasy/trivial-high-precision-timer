@@ -9,6 +9,10 @@
 
 (in-package #:trivial-high-precision-timer)
 
+(unless (find :thpt-native *features*)
+  (format t "~&Backend mismatch: JSCL must select a native backend.~%")
+  (#j:process:exit 2))
+
 (if (run-tests)
     (format t "~&JSCL suite passed~%")
     (progn

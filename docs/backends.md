@@ -10,7 +10,7 @@ target OS. Backends are tried in the order listed; the first that applies wins.
 | 3 | SBCL, CCL, CLISP, Clasp, … (via CFFI) | Windows | `QueryPerformanceCounter` | ~100 ns |
 | 4 | ECL | macOS / iOS | `mach_absolute_time` (via `ffi:c-inline`) | ~1 ns |
 | 5 | ECL | Linux, Android, BSD | `clock_gettime(CLOCK_MONOTONIC)` (via `ffi:c-inline`) | ~1 ns |
-| 6 | ECL | Windows | `QueryPerformanceCounter` (via `ffi:c-inline`) | ~100 ns |
+| 6 | ECL | Windows | `QueryPerformanceCounter` (via `ffi:c-inline`) | ~100 ns§ |
 | 7 | JSCL | Browser / Node.js | `performance.now()` | ~5 µs† |
 | 8 | ABCL | JVM (any OS) | `System.nanoTime()` | ~1 µs |
 | 9 | Any | Any | `get-internal-real-time` | varies‡ |
@@ -18,6 +18,9 @@ target OS. Backends are tried in the order listed; the first that applies wins.
 † Browsers clamp `performance.now()` resolution to ~1 ms or ~5 µs depending on
 site isolation settings (Spectre mitigations). Node.js retains nanosecond
 resolution.
+
+§ Untested: Roswell does not run ECL on Windows, so whether ECL defines
+`:windows` there is unverified. If it does not, this build takes priority 9.
 
 ‡ Fallback resolution depends on the implementation's
 `internal-time-units-per-second`: SBCL ~1 µs, CCL / ECL ~1 ms, CLISP ~10 ms.

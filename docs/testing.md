@@ -35,17 +35,20 @@ rm -rf ~/.cache/common-lisp
 THPT_FORCE_FALLBACK=1 sbcl --script tests/run.lisp
 ```
 
-The cache must be cleared: ASDF does not recompile on a feature change alone,
-so without it the run silently reports green against the native backend. Each
-run prints which backend it compiled.
+The cache must be cleared: ASDF does not recompile on a feature change alone.
+Each run prints which backend it compiled and exits 2 if that is not the one
+asked for, so a stale cache fails rather than quietly testing the wrong path.
 
 ### JSCL
 
 ```sh
-git clone --depth 1 https://github.com/jscl-project/jscl.git
-(cd jscl && npm install && ./make.sh)
+git clone https://github.com/jscl-project/jscl.git
+(cd jscl && git checkout 7981e5a5ba5821d4c1f862eec1cbda9ec3c51e77 && npm install && ./make.sh)
 node jscl/dist/jscl-node.js tests/run-jscl.lisp
 ```
+
+CI pins that commit. JSCL is a moving target with live codegen bugs, so an
+unpinned clone turns a JSCL regression into a failure of this repo.
 
 ## Writing tests
 

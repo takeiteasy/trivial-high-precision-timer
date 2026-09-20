@@ -30,5 +30,18 @@
       (funcall quickload :trivial-high-precision-timer/tests)
       (asdf:load-system :trivial-high-precision-timer/tests)))
 
+;;; A green run proves nothing unless the intended backend is the one that got
+;;; compiled: every test passes identically on either. ASDF does not recompile
+;;; on a feature change, so a stale FASL is the likely way to get this wrong.
+(let ((forced (let ((v (uiop:getenv "THPT_FORCE_FALLBACK")))
+                (and v (string/= v "") t)))
+      (native (and (find :thpt-native *features*) t)))
+  (when (eq forced native)
+    (format t "~&Backend mismatch: THPT_FORCE_FALLBACK is ~a but :THPT-NATIVE is ~a.~%~
+                 Clear ~~/.cache/common-lisp and rerun.~%"
+            (if forced "set" "unset")
+            (if native "present" "absent"))
+    (uiop:quit 2)))
+
 (uiop:quit
  (if (uiop:symbol-call '#:trivial-high-precision-timer '#:run-tests) 0 1))
