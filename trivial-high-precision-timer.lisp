@@ -3,7 +3,7 @@
 ;;;; Backends (in priority order):
 ;;;;   1. CFFI — macOS (mach_absolute_time), Linux/BSD (clock_gettime), Windows (QPC)
 ;;;;   2. ECL native FFI — same OS APIs, for iOS/Android/embedded where dlopen fails
-;;;;   3. JSCL — JavaScript performance.now() for WebAssembly/browser
+;;;;   3. JSCL — JavaScript performance.now() (jscl-backend.lisp)
 ;;;;   4. ABCL — Java System.nanoTime() for JVM
 ;;;;   5. Pure CL — get-internal-real-time fallback for any conforming implementation
 
@@ -238,19 +238,8 @@ Lisp bignums make overflow impossible, but we keep the same algorithm."
     (%int64-muldiv delta 1000000000 *freq*)))
 
 ;;; --- JSCL (WebAssembly / browser) ---
-;;; Uses performance.now() which returns milliseconds as a float.
-;;; Effective resolution is ~5us in modern browsers (Spectre mitigations).
-;;; Requires a modern environment where performance is a global
-;;; (all browsers, Node.js >= 16).
-
-#+jscl
-(progn
-  (defun %ensure-platform-initialized ()
-    (setf %platform-initialized% t))
-  (defun %raw-ticks ()
-    (round (* (#j:performance:now) 1000000)))
-  (defun %ticks-to-ns (delta)
-    delta))
+;;; In jscl-backend.lisp, which only JSCL reads: its #j: foreign-call syntax
+;;; is an unknown dispatch character to every other reader.
 
 ;;; --- ABCL (JVM) ---
 ;;; Uses System.nanoTime() — monotonic, nanosecond precision.

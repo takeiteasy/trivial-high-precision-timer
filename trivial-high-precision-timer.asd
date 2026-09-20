@@ -7,4 +7,5 @@
   :version "0.1.0"
   :serial t
   :depends-on (#-(or ecl jscl abcl) :cffi)
-  :components ((:file "trivial-high-precision-timer")))
+  :components ((:file "trivial-high-precision-timer")
+               #+jscl (:file "jscl-backend")))
