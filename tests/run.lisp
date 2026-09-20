@@ -10,7 +10,9 @@
 ;;;; backend instead of the platform one. Clear ~/.cache/common-lisp first:
 ;;;; ASDF does not recompile on a feature change alone.
 
-(require :asdf)
+;;; ASDF comes from the implementation where it has one and from Quicklisp
+;;; otherwise: CLISP ships neither ASDF nor UIOP.
+(ignore-errors (require :asdf))
 
 (unless (find-package '#:quicklisp)
   (dolist (candidate '("quicklisp/setup.lisp" ".roswell/lisp/quicklisp/setup.lisp"))
@@ -18,6 +20,10 @@
       (when (probe-file setup)
         (load setup)
         (return)))))
+
+(unless (find-package '#:uiop)
+  (error "No ASDF available. Install Quicklisp, or use an implementation that ~
+          provides ASDF."))
 
 (let ((force (uiop:getenv "THPT_FORCE_FALLBACK")))
   (when (and force (string/= force ""))

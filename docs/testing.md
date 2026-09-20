@@ -68,14 +68,20 @@ Tests that cannot run under JSCL are guarded with `#-jscl`.
 
 `.github/workflows/ci.yml` runs one job per cell.
 
-| OS | SBCL | CCL | ECL | ABCL | CLISP | Forced fallback |
-|---|---|---|---|---|---|---|
-| Linux | ✅ | ✅ | ✅ | ✅ | ✅ (fallback) | ✅ |
-| macOS | ✅ | ✅ | ✅ | ✅ | — | ✅ |
-| Windows | ✅ | — | — | ⚠️ | — | ✅ |
+| OS | SBCL | CCL | ECL | ABCL | Forced fallback |
+|---|---|---|---|---|---|
+| Linux | ✅ | ✅ | ✅ | ✅ | ✅ |
+| macOS | ✅ | ✅† | ✅ | ✅ | ✅ |
+| Windows | ✅ | — | — | ⚠️ | ✅ |
 
-A separate job builds JSCL and runs the suite under node.
+Separate jobs run CLISP on the fallback and JSCL under node.
+
+† On `macos-15-intel`. Roswell has no `ccl-bin` for arm64 darwin, CCL ships no
+arm64 macOS release, and Homebrew's formula is deprecated — building from
+source is the only arm64 route.
 
 Roswell supports few implementations on Windows, which is why CCL and ECL are
-absent there and ABCL is non-blocking. See the README for platforms CI does not
-cover at all.
+absent there and ABCL is non-blocking. CLISP has its own job because Roswell
+builds it from source and that build fails on current Ubuntu; it uses the
+distribution package instead. See the README for platforms CI does not cover at
+all.

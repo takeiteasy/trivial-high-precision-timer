@@ -23,7 +23,9 @@ jobs:
           - { name: ECL / Linux,      os: ubuntu-latest,   lisp: ecl }
           - { name: ABCL / Linux,     os: ubuntu-latest,   lisp: abcl-bin }
           - { name: SBCL / macOS,     os: macos-latest,    lisp: sbcl-bin }
-          - { name: CCL / macOS,      os: macos-latest,    lisp: ccl-bin }
+          # Intel runner: Roswell has no ccl-bin for arm64 darwin, CCL ships
+          # no arm64 macOS release, and Homebrew's formula is deprecated.
+          - { name: CCL / macOS,      os: macos-15-intel,  lisp: ccl-bin }
           - { name: ECL / macOS,      os: macos-latest,    lisp: ecl }
           - { name: ABCL / macOS,     os: macos-latest,    lisp: abcl-bin }
           - { name: SBCL / Windows,   os: windows-latest,  lisp: sbcl-bin }
@@ -34,9 +36,6 @@ jobs:
           - { name: Fallback / Linux,   os: ubuntu-latest,  lisp: sbcl-bin,  force-fallback: '1' }
           - { name: Fallback / macOS,   os: macos-latest,   lisp: sbcl-bin,  force-fallback: '1' }
           - { name: Fallback / Windows, os: windows-latest, lisp: sbcl-bin,  force-fallback: '1' }
-          # CLISP runs the fallback: it is the implementation most likely to
-          # lack a working CFFI in the wild.
-          - { name: CLISP / Linux,      os: ubuntu-latest,  lisp: clisp,     force-fallback: '1', experimental: true }
 
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +61,28 @@ jobs:
       - name: Run test suite
         shell: lispsh -eo pipefail {0}
         run: ros -Q run --load tests/run.lisp
+
+  # CLISP has its own job: Roswell builds it from source and that build fails
+  # on current Ubuntu. It runs the fallback, being the implementation most
+  # likely to lack a working CFFI in the wild.
+  clisp:
+    name: CLISP / Linux
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      THPT_FORCE_FALLBACK: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CLISP and Quicklisp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clisp
+          curl -sSLo "$RUNNER_TEMP/quicklisp.lisp" https://beta.quicklisp.org/quicklisp.lisp
+          clisp -q -norc -x "(progn (load \"$RUNNER_TEMP/quicklisp.lisp\") (funcall (read-from-string \"quicklisp-quickstart:install\")))"
+
+      - name: Run test suite
+        run: clisp -q -norc tests/run.lisp
 
   jscl:
     name: JSCL / node
