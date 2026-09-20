@@ -22,6 +22,9 @@ jobs:
           - { name: ECL / Linux,      os: ubuntu-latest,   lisp: ecl }
           - { name: ABCL / Linux,     os: ubuntu-latest,   lisp: abcl-bin }
           - { name: SBCL / macOS,     os: macos-latest,    lisp: sbcl-bin }
+          # Intel runner: Roswell has no ccl-bin for arm64 darwin, CCL ships no
+          # arm64 macOS release, and Homebrew's formula is deprecated.
+          - { name: CCL / macOS,      os: macos-15-intel,  lisp: ccl-bin }
           - { name: ECL / macOS,      os: macos-latest,    lisp: ecl }
           - { name: ABCL / macOS,     os: macos-latest,    lisp: abcl-bin }
           - { name: SBCL / Windows,   os: windows-latest,  lisp: sbcl-bin }

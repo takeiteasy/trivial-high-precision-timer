@@ -77,7 +77,7 @@ matrix.
 |---|---|
 | FreeBSD, OpenBSD, NetBSD | No GitHub-hosted runner. Shares the `clock_gettime` path tested on Linux. |
 | CCL, ECL on Windows | Roswell does not support them there. |
-| CCL on macOS | Roswell has no `ccl-bin` for arm64 darwin, CCL ships no arm64 macOS release, and an Intel runner costs more than the cell is worth. Covered on Linux. |
+| CCL on arm64 macOS | Roswell has no `ccl-bin` for arm64 darwin and CCL ships no arm64 macOS release, so the cell runs on an Intel runner. |
 | ABCL on Windows | Roswell's MSYS2 install fails there. `System.nanoTime()` is identical across OSes and is covered on Linux and macOS. |
 | iOS, Android | No runner. Shares the ECL `ffi:c-inline` paths tested on desktop. |
 | LispWorks, Allegro | Commercial; no CI license. |

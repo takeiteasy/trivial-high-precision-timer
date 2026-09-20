@@ -71,10 +71,14 @@ Tests that cannot run under JSCL are guarded with `#-jscl`.
 | OS | SBCL | CCL | ECL | ABCL | Forced fallback |
 |---|---|---|---|---|---|
 | Linux | ✅ | ✅ | ✅ | ✅ | ✅ |
-| macOS | ✅ | — | ✅ | ✅ | ✅ |
+| macOS | ✅ | ✅† | ✅ | ✅ | ✅ |
 | Windows | ✅ | — | — | — | ✅ |
 
 Separate jobs run CLISP on the fallback and JSCL under node.
+
+† On `macos-15-intel`. Roswell has no `ccl-bin` for arm64 darwin, CCL ships no
+arm64 macOS release, and Homebrew's formula is deprecated — building from
+source is the only arm64 route.
 
 CLISP has its own job because Roswell builds it from source and that build
 fails on current Ubuntu; it uses the distribution package instead.
