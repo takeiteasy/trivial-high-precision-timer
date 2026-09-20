@@ -10,7 +10,6 @@ jobs:
   test:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental || false }}
     env:
       LISP: ${{ matrix.lisp }}
       THPT_FORCE_FALLBACK: ${{ matrix.force-fallback }}
@@ -23,14 +22,9 @@ jobs:
           - { name: ECL / Linux,      os: ubuntu-latest,   lisp: ecl }
           - { name: ABCL / Linux,     os: ubuntu-latest,   lisp: abcl-bin }
           - { name: SBCL / macOS,     os: macos-latest,    lisp: sbcl-bin }
-          # Intel runner: Roswell has no ccl-bin for arm64 darwin, CCL ships
-          # no arm64 macOS release, and Homebrew's formula is deprecated.
-          - { name: CCL / macOS,      os: macos-15-intel,  lisp: ccl-bin }
           - { name: ECL / macOS,      os: macos-latest,    lisp: ecl }
           - { name: ABCL / macOS,     os: macos-latest,    lisp: abcl-bin }
           - { name: SBCL / Windows,   os: windows-latest,  lisp: sbcl-bin }
-          # Roswell supports few implementations on Windows.
-          - { name: ABCL / Windows,   os: windows-latest,  lisp: abcl-bin, experimental: true }
           # Pure-CL fallback: no CFFI, no platform API. The only coverage this
           # backend can get, since no runner lacks a native one.
           - { name: Fallback / Linux,   os: ubuntu-latest,  lisp: sbcl-bin,  force-fallback: '1' }
@@ -46,9 +40,13 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # cache: false -- a restored Roswell cache has skipped the install and
+      # left the job running with no implementation at all, while the action
+      # still reported success. Rebuilding every run is the cheaper bug.
       - uses: 40ants/setup-lisp@v4
         with:
           asdf-system: trivial-high-precision-timer
+          cache: false
 
       # The setup step builds the system without :thpt-force-fallback, so the
       # fallback cells would otherwise load prebuilt native FASLs: ASDF does
