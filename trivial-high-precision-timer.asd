@@ -3,7 +3,7 @@
 (asdf:defsystem #:trivial-high-precision-timer
   :description "A cross-platform high-precision timer for Common Lisp"
   :author "George Watson <gigolo@hotmail.co.uk>"
-  :license  "GPLv3"
+  :license  "MIT"
   :version "0.1.0"
   :serial t
   ;; JSCL loads via jscl-load.lisp, not ASDF.
@@ -13,7 +13,7 @@
 
 (asdf:defsystem #:trivial-high-precision-timer/tests
   :description "Test suite for trivial-high-precision-timer"
-  :license "GPLv3"
+  :license "MIT"
   :serial t
   :depends-on (#:trivial-high-precision-timer)
   :components ((:module "tests"
