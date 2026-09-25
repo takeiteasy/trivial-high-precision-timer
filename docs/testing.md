@@ -66,7 +66,8 @@ Tests that cannot run under JSCL are guarded with `#-jscl`.
 
 ## CI
 
-`.github/workflows/ci.yml` runs one job per cell.
+`.github/workflows/ci.yml` runs one job per cell. Most cells run on request
+rather than on every push; see [CI](ci.md).
 
 | OS | SBCL | CCL | ECL | ABCL | Forced fallback |
 |---|---|---|---|---|---|

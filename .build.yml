@@ -1,0 +1,15 @@
+image: debian/stable
+packages:
+  - curl
+  - sbcl
+sources:
+  - https://git.sr.ht/~takeiteasy/trivial-high-precision-timer
+tasks:
+  - quicklisp: |
+      curl -fsSL --retry 5 -o quicklisp.lisp https://beta.quicklisp.org/quicklisp.lisp
+      sbcl --non-interactive --load quicklisp.lisp \
+           --eval '(quicklisp-quickstart:install)' \
+           --eval '(ql:quickload :cffi)'
+  - test: |
+      cd trivial-high-precision-timer
+      sbcl --script tests/run.lisp

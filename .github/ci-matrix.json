@@ -1,0 +1,24 @@
+{
+  "paths": {
+    "docs": "^(docs/|.*\\.md$|LICENSE$|\\.hut\\.scfg$|\\.builds?/|\\.build\\.yml$|system-index\\.txt$)",
+    "focus": "^(jscl-backend\\.lisp$|jscl-load\\.lisp$|tests/run-jscl\\.lisp$)"
+  },
+  "entries": [
+    { "name": "SBCL / Linux", "os": "ubuntu-latest", "lisp": "sbcl-bin", "force-fallback": "", "family": ["linux"], "tier": 1, "when": "any" },
+    { "name": "Fallback / Linux", "os": "ubuntu-latest", "lisp": "sbcl-bin", "force-fallback": "1", "family": ["linux"], "tier": 1, "when": "any" },
+    { "name": "CCL / Linux", "os": "ubuntu-latest", "lisp": "ccl-bin", "force-fallback": "", "family": ["linux"], "tier": 2, "when": "any" },
+    { "name": "ECL / Linux", "os": "ubuntu-latest", "lisp": "ecl", "force-fallback": "", "family": ["linux"], "tier": 2, "when": "any" },
+    { "name": "ABCL / Linux", "os": "ubuntu-latest", "lisp": "abcl-bin", "force-fallback": "", "family": ["linux"], "tier": 2, "when": "any" },
+    { "name": "SBCL / macOS", "os": "macos-latest", "lisp": "sbcl-bin", "force-fallback": "", "family": ["macos"], "tier": 2, "when": "any" },
+    { "name": "CCL / macOS", "os": "macos-15-intel", "lisp": "ccl-bin", "force-fallback": "", "family": ["macos"], "tier": 2, "when": "any" },
+    { "name": "ECL / macOS", "os": "macos-latest", "lisp": "ecl", "force-fallback": "", "family": ["macos"], "tier": 2, "when": "any" },
+    { "name": "ABCL / macOS", "os": "macos-latest", "lisp": "abcl-bin", "force-fallback": "", "family": ["macos"], "tier": 2, "when": "any" },
+    { "name": "SBCL / Windows", "os": "windows-latest", "lisp": "sbcl-bin", "force-fallback": "", "family": ["windows"], "tier": 2, "when": "any" },
+    { "name": "Fallback / macOS", "os": "macos-latest", "lisp": "sbcl-bin", "force-fallback": "1", "family": ["macos"], "tier": 2, "when": "any" },
+    { "name": "Fallback / Windows", "os": "windows-latest", "lisp": "sbcl-bin", "force-fallback": "1", "family": ["windows"], "tier": 2, "when": "any" }
+  ],
+  "extras": [
+    { "name": "CLISP / Linux", "job": "clisp", "lisp": "clisp", "family": ["linux"], "tier": 2, "when": "any" },
+    { "name": "JSCL / node", "job": "jscl", "lisp": "jscl", "family": ["linux"], "tier": 1, "when": "focus" }
+  ]
+}

@@ -69,7 +69,7 @@ sbcl --script tests/run.lisp
 ```
 
 See [docs/testing.md](docs/testing.md) for the other implementations and the CI
-matrix.
+matrix, and [docs/ci.md](docs/ci.md) for when CI runs.
 
 ### Not covered by CI
 
