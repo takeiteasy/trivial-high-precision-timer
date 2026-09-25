@@ -3,7 +3,7 @@ packages:
   - curl
   - sbcl
 sources:
-  - https://git.sr.ht/~takeiteasy/trivial-high-precision-timer#trunk
+  - https://git.sr.ht/~takeiteasy/trivial-high-precision-timer
 tasks:
   - quicklisp: |
       curl -fsSL --retry 5 -o quicklisp.lisp https://beta.quicklisp.org/quicklisp.lisp
